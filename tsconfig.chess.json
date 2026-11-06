@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "skipLibCheck": true
+  },
+  "include": ["assets/scripts/chess/**/*.ts", "assets/scripts/vendor/xiangqi-esm.ts"]
+}
