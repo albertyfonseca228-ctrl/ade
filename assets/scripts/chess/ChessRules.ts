@@ -21,11 +21,15 @@ export interface RulesEngine {
 
 /** AI receives an isolated FEN snapshot; it never mutates the live game. */
 export interface ChessAI {
-    chooseMove(fen: string, legalMoves: ReadonlyArray<Move>): Promise<{ from: string; to: string } | null>;
+    chooseMove(fen: string, legalMoves: ReadonlyArray<Move>, context?: { isCancelled(): boolean }): Promise<{ from: string; to: string } | null>;
+}
+
+export function createRulesEngine(fen?: string): RulesEngine {
+    return new (Xiangqi as unknown as { new(fen?: string): RulesEngine })(fen);
 }
 
 export class ChessRules {
-    readonly engine: RulesEngine = new (Xiangqi as unknown as { new(): RulesEngine })();
+    readonly engine: RulesEngine = createRulesEngine();
     get ended(): boolean {
         return this.engine.game_over();
     }

@@ -1,0 +1,11 @@
+﻿{
+    "license":  "MIT",
+    "copiedCode":  false,
+    "treeSha":  "273ebe7505119aedbc4815cb64a53c6b31b5af1a",
+    "reviewedPaths":  [
+                          "LICENSE",
+                          "src/AI/SearchEngine.ts",
+                          "src/AI/SearchEngines/IterativeDeepeningAlphaBeta.ts"
+                      ],
+    "repository":  "https://github.com/lhttjdr/xiangqi"
+}

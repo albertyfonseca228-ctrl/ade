@@ -1,5 +1,5 @@
-import { Color, EventTouch, Graphics, HorizontalTextAlignment, Label, Node, tween, UITransform, Vec3, VerticalTextAlignment } from 'cc';
-import { Move, Piece, RulesEngine } from './ChessRules';
+import { Color, EventTouch, Graphics, HorizontalTextAlignment, Label, Node, tween, Tween, UITransform, Vec3, VerticalTextAlignment } from 'cc';
+import type { Move, Piece, RulesEngine } from './ChessRules';
 
 const INK = new Color(82, 47, 27);
 const RED = new Color(174, 43, 35);
@@ -61,6 +61,7 @@ export class BoardView {
     }
 
     render(engine: RulesEngine, selected: string | null, legal: Move[]): void {
+        this.cancelAnimations();
         for (const child of [...this.pieces.children]) child.destroy();
         this.pieces.removeAllChildren();
         this.pieceNodes.clear();
@@ -89,6 +90,10 @@ export class BoardView {
         if (!node) { done(); return; }
         node.setSiblingIndex(this.pieces.children.length - 1);
         tween(node).to(0.18, { position: position(move.to) }, { easing: 'quadOut' }).call(done).start();
+    }
+
+    cancelAnimations(): void {
+        for (const node of this.pieceNodes.values()) Tween.stopAllByTarget(node);
     }
 
     private drawPiece(piece: Piece, selected: boolean): Node {

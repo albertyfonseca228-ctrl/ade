@@ -24,16 +24,19 @@ assert.equal(scripts[0].node.__id__, canvasIndex);
 const target = path.join(root, 'temp/programming/packer-driver/targets/editor');
 const importMapPath = path.join(target, 'import-map.json');
 if (fs.existsSync(importMapPath)) {
-    const imports = JSON.parse(fs.readFileSync(importMapPath, 'utf8')).imports;
+    const map = JSON.parse(fs.readFileSync(importMapPath, 'utf8'));
+    const imports = map.imports;
     const entry = Object.keys(imports).find(key => key.endsWith('/assets/scripts/chess/ChessGame.ts'));
     assert(entry, 'Creator import map must include ChessGame.ts');
     const chunk = fs.readFileSync(path.resolve(target, imports[entry]), 'utf8');
+    const record = JSON.parse(fs.readFileSync(path.join(target, 'main-record.json'), 'utf8')).modules[entry];
     let frame;
     let exported;
     const classes = new Map();
     class Component {}
     const cc = {
         Component,
+        Color: class Color {},
         cclegacy: { _RF: { push(_module, uuid) { frame = uuid; }, pop() { frame = undefined; } } },
         _decorator: { ccclass(name) { return cls => { classes.set(frame, cls); cls.registeredName = name; return cls; }; } },
         __checkObsolete__() {}, __checkObsoleteInNamespace__() {},
@@ -44,14 +47,24 @@ if (fs.existsSync(importMapPath)) {
     const esm = read('assets/scripts/vendor/xiangqi-esm.ts');
     vm.runInNewContext(esm.replace(/export\s*\{\s*Xiangqi\s*\};?\s*$/, 'exports.Xiangqi = Xiangqi;'), xiangqiScope);
     class ChessRules { constructor() { this.engine = new xiangqiScope.exports.Xiangqi(); } }
+    const { createLoader } = require('./chess-test-runtime.cjs');
+    const load = createLoader(cc);
     vm.runInNewContext(chunk, {
         System: { register(deps, declare) {
             const module = declare((name, value) => { if (name === 'ChessGame') exported = value; }, { meta: {} });
-            assert.equal(deps.length, 4);
-            module.setters[0]({ report() {} });
-            module.setters[1](cc);
-            module.setters[2]({}); // BoardView methods are used only by onLoad
-            module.setters[3]({ ChessRules });
+            const scope = map.scopes[imports[entry]] || {};
+            deps.forEach((dep, index) => {
+                const request = record.imports.find(item => item.resolved === dep)?.value || dep;
+                const resolved = scope[dep];
+                if (dep === 'cc') module.setters[index](cc);
+                else if (request.includes('code-quality')) module.setters[index]({ report() {} });
+                else {
+                    const file = request.startsWith('.') ? new URL(request + '.ts', entry).href : Object.keys(imports).find(key => imports[key] === resolved && key.startsWith('file:'));
+                    assert(file, `Unknown Creator module dependency: ${dep}`);
+                    const { fileURLToPath } = require('url');
+                    module.setters[index](load(fileURLToPath(file)));
+                }
+            });
             module.execute();
         } }, console,
     });
@@ -59,9 +72,10 @@ if (fs.existsSync(importMapPath)) {
     assert(exported.prototype instanceof Component);
     assert.equal(exported.registeredName, 'ChessGame');
     const instance = new exported(); // includes constructor-time Xiangqi initialisation
-    assert.equal(instance.rules.engine.board().flat().filter(Boolean).length, 32);
-    assert.equal(instance.rules.engine.moves().length, 44);
-    console.log('PASS: actual Creator chunk registers the scene class ID; component constructor and ESM engine initialize');
+    const rules = instance.session ? instance.session.rules : instance.rules;
+    assert.equal(rules.engine.board().flat().filter(Boolean).length, 32);
+    assert.equal(rules.engine.moves().length, 44);
+    console.log('PASS: available Creator chunk registers the scene class ID; component constructor and current source dependencies initialize (cache may predate source)');
 } else {
     console.log('SKIP: Creator compiled chunk not available; import project in Creator to enable registration check');
 }
@@ -69,10 +83,16 @@ if (fs.existsSync(importMapPath)) {
 // Resolve every relative TypeScript import and reject circular module dependencies.
 const active = new Set();
 const done = new Set();
+const metadataUuids = new Set();
 function visit(file) {
     assert(!active.has(file), `Circular dependency: ${file}`);
     if (done.has(file)) return;
     active.add(file);
+    const metadata = JSON.parse(fs.readFileSync(file + '.meta', 'utf8'));
+    assert.equal(metadata.importer, 'typescript');
+    assert(!metadataUuids.has(metadata.uuid), `Duplicate script UUID: ${metadata.uuid}`);
+    metadataUuids.add(metadata.uuid);
+    assert.equal(scriptUuid(scriptClassId(metadata.uuid)), metadata.uuid);
     const source = fs.readFileSync(file, 'utf8');
     for (const match of source.matchAll(/from\s+['"](\.[^'"]+)['"]/g)) {
         const dep = path.resolve(path.dirname(file), match[1] + '.ts');
